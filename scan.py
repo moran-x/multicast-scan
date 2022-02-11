@@ -33,7 +33,7 @@ def get_ffprobe(address, port):
         result = subprocess.run(['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_programs', f'udp://@{address}:{port}'], capture_output=True, text=True, timeout=args.info_timeout)
         # Convert the STDOUT to JSON
         json_string = json.loads(str(result.stdout))
-    except:
+    except Exception:
         print(f'[*] No data found for {address}:{port}')
         return 0
     # Parse the JSON "PROGRAMS" section
@@ -50,10 +50,10 @@ def get_ffprobe(address, port):
                     else:
                         print(f'[*] !!! No channel name found for {address}:{port} !!!')
                         return 1
-                except:
+                except Exception:
                     print(f'[*] !!! No channel name found for {address}:{port} !!!')
                     return 1
-            except:
+            except Exception:
                 print(f'[*] No stream found for {address}:{port}')
                 return 0
 
@@ -88,8 +88,8 @@ def playlist_parser(playlist):
     """
 
     # Defining the variables
-    channel_name = ''
-    channel_address = ''
+    # channel_name = ''
+    # channel_address = ''
 
     # Defining regular expression for strings
     channel_name_re = re.compile(r'(?<=#EXTINF:-1,)(.*)(?=$)')
@@ -130,25 +130,6 @@ def udp_ports_parser(channels_dictionary):
     return port_list
 
 
-args = parser.parse_args()
-os_name = platform.system()
-
-if args.playlist:
-
-    # Check the input playlist file
-    if not os.path.isfile(args.playlist):
-        print('[*] Please specify the correct file!')
-        exit()
-    else:
-        print(f'[*] Playlist file: {args.playlist}')
-
-    # Get the dictionary of UDP channels
-    channels_dictionary = playlist_parser(args.playlist)
-
-    # Get the unique ports' numbers:
-    port_list = udp_ports_parser(channels_dictionary)
-
-
 def create_file(playlist):
     """ Prepare the resulting playlist file
     :param playlist: Name of playlist
@@ -176,7 +157,7 @@ def playlist_add(ip, port, name):
     :param name:Channel name
     """
     # Define the full name/path to the playlist file
-    global playlistFile
+    global playlistfile
 
     # Check the name variable%
     if type(name) is int:
@@ -185,7 +166,7 @@ def playlist_add(ip, port, name):
         channel_string = f'#EXTINF:-1,{name}\n'
 
     # Open the file
-    with open(playlistFile, 'a') as file:
+    with open(playlistfile, 'a') as file:
 
         # Add the channel name line
         file.write(channel_string)
@@ -194,23 +175,55 @@ def playlist_add(ip, port, name):
         file.write(f'udp://@{ip}:{port}\n')
 
 
-ip = args.ip
-port = args.port
-os_name = ''
-url = ip+':'+str(port)
+# Define the script arguments as a <args> variable
+args = parser.parse_args()
 
-playlistFileName,  playlistFile = create_file(args.playlist)
+# Check the OS name
+os_name = platform.system()
 
-for k, v in channels_dictionary.items():
-    ipaddr, port = v.rsplit(':', 1)
-    
-    # Trying to wake up the udp thread
-    check_udp_connectivity(v,  10)
-    info = get_ffprobe(ipaddr, port)
-    if type(info) is int:
-        print(v + ' - ' + ipaddr)
-        playlist_add(ipaddr, port,  ipaddr)
+# Define the dictionary for UDP ports:
+port_list = {}
+
+# Checking if the system is Unix base
+if os_name != 'Linux':
+    print(f'[*] This script only works on Unix base systems. Your system is {os_name}')
+    exit()
+
+# If the playlist argument is specified
+if args.playlist:
+
+    # Create a resulting playlist file:
+    playlistfilename, playlistfile = create_file(args.playlist)
+
+    # Check the input playlist file
+    if not os.path.isfile(args.playlist):
+        print('[*] Please specify the correct file!')
+        exit()
     else:
-        print(v + ' - ' + info)
-        playlist_add(ipaddr, port,  info)
+        print(f'[*] Playlist file: {args.playlist}')
+
+    # Get the dictionary of UDP channels
+    channels_dictionary = playlist_parser(args.playlist)
+
+    # Get the unique ports' numbers:
+    port_list = udp_ports_parser(channels_dictionary)
+
+    for k, v in channels_dictionary.items():
+        ipaddr, port = v.rsplit(':', 1)
+
+        # Trying to wake up the udp thread
+        check_udp_connectivity(v, 10)
+        info = get_ffprobe(ipaddr, port)
+        if type(info) is int:
+            print(v + ' - ' + ipaddr)
+            playlist_add(ipaddr, port, ipaddr)
+        else:
+            print(v + ' - ' + info)
+            playlist_add(ipaddr, port, info)
+
+# ip = args.ip
+# port = args.port
+# url = ip+':'+str(port)
+
+
 
