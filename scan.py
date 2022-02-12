@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-
+#!/usr/bin/env python3
+"""The script scans the udp multicast streams and gets the name of the channels using the m3 file.
+  Created By:  Moran <moran.x@gmail.com>
+  Version: 1.0.0
+  Git: https://github.com/moran-x/multicast-scan
+"""
 
 import argparse
 import json
@@ -173,6 +178,11 @@ def playlist_add(ip, port, name, playlistfile):
 
 # If the playlist argument is specified
 def action_playlist(playlist, info_timeout, udp_timeout):
+    """ Parce playlist file and check ip:port and create new playlist
+    :param playlist: playlist file
+    :param info_timeout: time to wait in seconds for get INFO
+    :param udp_timeout: time to wait in seconds for get UDP
+    """
     # Create a resulting playlist file:
     playlistfilename, playlistfile = create_file(playlist)
 
@@ -204,6 +214,12 @@ def action_playlist(playlist, info_timeout, udp_timeout):
 
 # Single IP and PORT check
 def action_ip_port(ip, port, info_timeout, udp_timeout):
+    """ Single IP and PORT check
+    :param ip: IP multicast stream
+    :param port: PORT multicast stream
+    :param info_timeout: time to wait in seconds for get INFO
+    :param udp_timeout: time to wait in seconds for get UDP
+    """
     check_udp_connectivity(ip+':'+port, udp_timeout)
     info = get_ffprobe(ip, port, info_timeout)
     if type(info) is int:
@@ -213,6 +229,9 @@ def action_ip_port(ip, port, info_timeout, udp_timeout):
 
 
 def main():
+    """
+    Mine function
+    """
     # Define the script arguments as a <args> variable
     args = parser.parse_args()
 
