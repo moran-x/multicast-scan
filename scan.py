@@ -1,36 +1,37 @@
 # -*- coding: utf-8 -*-
 
-import subprocess
-import json
+
 import argparse
-import socket
-import platform
-import struct
+import json
 import os
+import platform
 import re
+import socket
+import struct
+import subprocess
 
 parser = argparse.ArgumentParser(description='Script to check the IPTV UDP streams from m3u playlist')
 parser.add_argument("--port", help="additional UDP port to scan. Default: 1234", required=False, default=1234)
 parser.add_argument("--ip", help="additional IP to scan. Default: 239.1.1.10", required=False, default='239.1.1.10')
 parser.add_argument("--info_timeout", help="Time to wait in seconds for the stream's info", required=False, default=10)
-parser.add_argument("--nic", help="network interface IP address with UDP stream", required=False, default='0.0.0.0')
 parser.add_argument("--udp_timeout", help="Time to wait in seconds for the UPD port reply", required=False, default=10)
 parser.add_argument("--playlist", help="Playlist *.m3u file with UDP streams", required=False)
 
-channels_dictionary = []
 
-
-def get_ffprobe(address, port):
+def get_ffprobe(address, port, info_timeout):
     """ To get the json data from ip:port
     :param address: stream ip address
     :param port: connection port
+    :param info_timeout: Time to wait in seconds
     :return: channel name
     """
-    global args
+
     # Run the ffprobe with given IP and PORT with a given timeout to execute
     try:
         # Capture the output from ffprobe
-        result = subprocess.run(['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_programs', f'udp://@{address}:{port}'], capture_output=True, text=True, timeout=args.info_timeout)
+        result = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_programs', f'udp://@{address}:{port}'],
+            capture_output=True, text=True, timeout=info_timeout)
         # Convert the STDOUT to JSON
         json_string = json.loads(str(result.stdout))
     except Exception:
@@ -87,10 +88,6 @@ def playlist_parser(playlist):
     :return: Dictionary of UDP streams
     """
 
-    # Defining the variables
-    # channel_name = ''
-    # channel_address = ''
-
     # Defining regular expression for strings
     channel_name_re = re.compile(r'(?<=#EXTINF:-1,)(.*)(?=$)')
     channel_address_re = re.compile(r'(?<=@)(.*)(?=$)')
@@ -109,14 +106,14 @@ def playlist_parser(playlist):
     return dictionary
 
 
-def udp_ports_parser(channels_dictionary):
+def udp_ports_parser(channels):
     """ Function to get the list of the unique ports from the UDP channels dictionary
-    :param channels_dictionary: Dictionary of UDP streams
+    :param channels: Dictionary of UDP streams
     :return: List of the unique ports
     """
 
     # Get the unique values of UDP channel:port lines
-    upd_channels_ports = set(channels_dictionary.values())
+    upd_channels_ports = set(channels.values())
 
     # Get the list of UDP ports
     port_list = []
@@ -140,7 +137,7 @@ def create_file(playlist):
     currentpath = os.path.dirname(os.path.realpath(__file__))
 
     # Define the playlist file name
-    playlistfilename = f'{playlist.rsplit(".",  1)[0]}_name.m3u'
+    playlistfilename = f'{playlist.rsplit(".", 1)[0]}_name.m3u'
     playlistfile = os.path.join(currentpath, playlistfilename)
 
     # Open the playlist file and add the first line (header)
@@ -150,16 +147,15 @@ def create_file(playlist):
     return playlistfilename, playlistfile
 
 
-def playlist_add(ip, port, name):
+def playlist_add(ip, port, name, playlistfile):
     """ Add the given IP and port to the playlist file
     :param ip: stream ip address
     :param port: Connection port
-    :param name:Channel name
+    :param name: Channel name
+    :param playlistfile: full path to playlist file
     """
-    # Define the full name/path to the playlist file
-    global playlistfile
 
-    # Check the name variable%
+    # Check the name variable
     if type(name) is int:
         channel_string = f'#EXTINF:-1,Channel: {ip}:{port}\n'
     else:
@@ -175,55 +171,74 @@ def playlist_add(ip, port, name):
         file.write(f'udp://@{ip}:{port}\n')
 
 
-# Define the script arguments as a <args> variable
-args = parser.parse_args()
-
-# Check the OS name
-os_name = platform.system()
-
-# Define the dictionary for UDP ports:
-port_list = {}
-
-# Checking if the system is Unix base
-if os_name != 'Linux':
-    print(f'[*] This script only works on Unix base systems. Your system is {os_name}')
-    exit()
-
 # If the playlist argument is specified
-if args.playlist:
-
+def action_playlist(playlist, info_timeout, udp_timeout):
     # Create a resulting playlist file:
-    playlistfilename, playlistfile = create_file(args.playlist)
+    playlistfilename, playlistfile = create_file(playlist)
+
+    channels_dictionary = []
 
     # Check the input playlist file
-    if not os.path.isfile(args.playlist):
+    if not os.path.isfile(playlist):
         print('[*] Please specify the correct file!')
         exit()
     else:
-        print(f'[*] Playlist file: {args.playlist}')
+        print(f'[*] Playlist file: {playlist}')
 
     # Get the dictionary of UDP channels
-    channels_dictionary = playlist_parser(args.playlist)
-
-    # Get the unique ports' numbers:
-    port_list = udp_ports_parser(channels_dictionary)
+    channels_dictionary = playlist_parser(playlist)
 
     for k, v in channels_dictionary.items():
         ipaddr, port = v.rsplit(':', 1)
 
         # Trying to wake up the udp thread
-        check_udp_connectivity(v, 10)
-        info = get_ffprobe(ipaddr, port)
+        check_udp_connectivity(v, udp_timeout)
+        info = get_ffprobe(ipaddr, port, info_timeout)
         if type(info) is int:
             print(v + ' - ' + ipaddr)
-            playlist_add(ipaddr, port, ipaddr)
+            playlist_add(ipaddr, port, ipaddr, playlistfile)
         else:
             print(v + ' - ' + info)
-            playlist_add(ipaddr, port, info)
-
-# ip = args.ip
-# port = args.port
-# url = ip+':'+str(port)
+            playlist_add(ipaddr, port, info, playlistfile)
 
 
+# Single IP and PORT check
+def action_ip_port(ip, port, info_timeout, udp_timeout):
+    check_udp_connectivity(ip+':'+port, udp_timeout)
+    info = get_ffprobe(ip, port, info_timeout)
+    if type(info) is int:
+        print(ip+':'+port + ' - ' + ip)
+    else:
+        print(ip+':'+port + ' - ' + info)
 
+
+def main():
+    # Define the script arguments as a <args> variable
+    args = parser.parse_args()
+
+    # Check the OS name
+    os_name = platform.system()
+
+    # Checking if the system is Unix base
+    if os_name != 'Linux':
+        print(f'[*] This script only works on Unix base systems. Your system is {os_name}')
+        exit()
+
+    # Check that ffprobe are installed
+    try:
+        subprocess.call(['ffprobe', '-v', 'quiet'])
+    except FileNotFoundError:
+        print('[*] ffprobe are not installed! Please install first: https://ffmpeg.org/')
+        exit()
+
+    # Single IP and PORT check
+    if args.ip and args.port:
+        action_ip_port(args.ip, args.port, args.info_timeout, args.udp_timeout)
+
+    # If the playlist argument is specified
+    if args.playlist:
+        action_playlist(args.playlist, args.info_timeout, args.udp_timeout)
+
+
+if __name__ == "__main__":
+    main()
