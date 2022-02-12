@@ -220,12 +220,12 @@ def action_ip_port(ip, port, info_timeout, udp_timeout):
     :param info_timeout: time to wait in seconds for get INFO
     :param udp_timeout: time to wait in seconds for get UDP
     """
-    check_udp_connectivity(ip+':'+port, udp_timeout)
+    check_udp_connectivity(ip+':'+str(port), udp_timeout)
     info = get_ffprobe(ip, port, info_timeout)
     if type(info) is int:
-        print(ip+':'+port + ' - ' + ip)
+        print(ip+':'+str(port) + ' - ' + ip)
     else:
-        print(ip+':'+port + ' - ' + info)
+        print(ip+':'+str(port) + ' - ' + info)
 
 
 def main():
